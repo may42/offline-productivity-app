@@ -5,7 +5,8 @@
     <title>pom-calendar</title>
 </head>
 <body>
-<div id="info" style="white-space: nowrap">Data is saved in the local storage.<br/>
+<div id="info" style="white-space: nowrap">
+<span id="local_storage_info">Data is saved in the local storage.</span><br/>
 [TODO] Arrows - change selected day<br/>
 [TODO] Alt+"+"/"-" - increase/decrease value of the selected day<br/>
 [TODO] Alt+DIGIT - set value of the selected day to a digit<br/>
@@ -15,8 +16,8 @@
 <label>[TODO] Profile:<select id="profile_select" name="profile_select"></select></label>
 <button id="copy_btn">Copy all data to the clipboard (JSON)</button>
 <div id="pom"></div>
-<script src="libs/raphael-min.js"></script>
-<script src="libs/jquery-1.12.4.min.js"></script>
-<script src="pom-calendar.js"></script>
+<script src="scripts/vendor/raphael-min.js"></script>
+<script src="scripts/vendor/jquery-1.12.4.min.js"></script>
+<script src="scripts/app.js"></script>
 </body>
 </html>
