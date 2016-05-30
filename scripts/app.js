@@ -1,21 +1,98 @@
-/**
- * Created by RenCa on 13.05.2016.
- */
 ;(function(global){
     "use strict";
 
-    var example_data = {
-        name: "example_data",
+    var example_profile = {
+        name: "example_profile",
         firstDay: "2016.05.28",
         daySeparationTime: "4:00", // unused yet
         dataArr: [0,20, 0,1,2,3,4,5,6, 7,8,9,10,11,12,13, 14,15,16,17,18,19,20, 0,null,1,null,2,null,3 ]
     };
 
-    var paper = Raphael('pom', 100, 100);
-    drawBarGraph(paper, example_data, { pomHeight: 5, pomWidth: 30, avMaxPomAmount: 20 });
-    console.log('successfully drew bar graph for data "' + example_data.name + '"');
+    try {
+        var paper = Raphael("pom", 100, 100);
+        var statusInfoSpan = $("#status_info");
+        var profileSelectInput = $("profile_select");
+        var profiles = getDataFromLocalStorage();
+        // todo: fill profileSelectInput with loaded profile names
+        var currentProfile = profiles[0]; // first profile is chosen
+        // todo: save currently selected profile name in the local storage
+        drawBarGraph(paper, currentProfile, { pomHeight: 5, pomWidth: 30, avMaxPomAmount: 20 });
+        console.log('successfully drew bar graph for data "' + currentProfile.name + '"');
 
-    $('#copy_btn').click(function(){ copyTextToClipboard(JSON.stringify(example_data)); });
+        $("#copy_btn").click(function(){ copyTextToClipboard(stringifyOpaJSONData(currentProfile)); });
+        var profileFragment = profiles.length === 1 ? " profile is" : " profiles are";
+        var msg = profiles.length + profileFragment + ' loaded successfully. Currently selected: "' +
+            currentProfile.name + '"';
+        statusInfoSpan.text(msg);
+    } catch(err) {
+        console.error(err);
+        statusInfoSpan.text("error!" + err.message);
+    }
+
+    function getDataFromLocalStorage() {
+        var ls = global.localStorage;
+        if (!ls) throw new Error("local storage is not supported in this browser");
+        var prefix = "opa_profile_";
+        var result = [];
+        for (var key in localStorage) {
+            if (!localStorage.hasOwnProperty(key) || key.slice(0, prefix.length) !== prefix)
+                continue;
+            var raw = localStorage[key];
+            try {
+                var data = parseOpaJSONData(raw);
+                result.push(data);
+            } catch(err) {
+                console.error("Skipping bad data. " + err.message + "\n" + key + " : " + raw);
+            }
+        }
+        if (!result.length) {
+            console.log("no data is recorded in the local storage yet, creating example profile");
+            data = example_profile;
+            localStorage[prefix + data.name] = stringifyOpaJSONData(data);
+            result.push(data);
+        }
+        return result;
+    }
+
+    function parseOpaJSONData(rawJSONString) {
+        var data = JSON.parse(rawJSONString);
+        var res = {};
+        if (!data || typeof data !== "object")
+            throw new SyntaxError("data must be an object with key-value pairs");
+        if (typeof data.name !== "string" || !data.name.trim())
+            throw new SyntaxError('"name" must be a non-whitespace string');
+        if (typeof data.firstDay !== "string" || isNaN(+new Date(data.firstDay)))
+            throw new SyntaxError('"firstDay" must be a valid date string');
+        if (data.dataArr !== undefined && !Array.isArray(data.dataArr))
+            throw new SyntaxError('"dataArr" must be an array, containing positive integers or null-values');
+        if (data.daySeparationTime !== undefined) {
+            if (typeof data.daySeparationTime !== "string")
+                throw new SyntaxError('"daySeparationTime" must be a timestring of form "hh:mm"');
+            res.daySeparationTime = data.daySeparationTime = data.daySeparationTime.trim();
+            var match = data.daySeparationTime.match(/^(\d\d?):(\d\d)$/);
+            if (!match || +match[1] > 24 || +match[2] > 59)
+                throw new SyntaxError('"daySeparationTime" must be a timestring of form "hh:mm"');
+            res.daySeparationMs = (+match[1] * 60 + +match[2]) * 60 * 1000;
+        } else res.daySeparationMs = 0;
+        res.name = data.name.trim();
+        res.firstDay = data.firstDay.trim();
+        res.dataArr = (data.dataArr || []).map(function(x) {
+            if (typeof x === "string" && x.trim()) x = +x;
+            if (typeof x !== "number" || !isFinite(x) || isNaN(x)) return null;
+            return x; // float, negative and to big values will silently pass
+        });
+        return res;
+    }
+
+    function stringifyOpaJSONData(data) {
+        var res = {
+            name: data.name,
+            firstDay: data.firstDay,
+            dataArr: data.dataArr
+        };
+        if (data.daySeparationTime) res.daySeparationTime = data.daySeparationTime;
+        return JSON.stringify(res);
+    }
 
     function drawBarGraph(paper, data, settings) {
         var s = expandSettings(settings); // omitted settings will result in default settings object
