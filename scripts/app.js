@@ -1,105 +1,58 @@
-;(function(global){
+;(function(global, $){
     "use strict";
 
-    var example_profile = {
-        name: "example_profile",
-        firstDay: "2016.05.28",
-        daySeparationTime: "4:00", // unused yet
-        dataArr: [0,20, 0,1,2,3,4,5,6, 7,8,9,10,11,12,13, 14,15,16,17,18,19,20, 0,null,1,null,2,null,3 ]
-    };
-
     try {
-        var paper = Raphael("pom", 100, 100);
         var statusInfoSpan = $("#status_info");
-        var profileSelectInput = $("profile_select");
-        var profiles = getDataFromLocalStorage();
-        // todo: fill profileSelectInput with loaded profile names
-        var currentProfile = profiles[0]; // first profile is chosen
-        // todo: save currently selected profile name in the local storage
-        drawBarGraph(paper, currentProfile, { pomHeight: 5, pomWidth: 30, avMaxPomAmount: 20 });
-        console.log('successfully drew bar graph for data "' + currentProfile.name + '"');
+        var paper = Raphael("pom", 100, 100);
+        var settings = { pomHeight: 5, pomWidth: 30, maxPom: 20 };
+        var pm = new global.ProfileManager($("#profile_select"));
+        pm.profileSwitchCallback = onProfileSwitch;
+        $("#copy_btn").click(function() { copyTextToClipboard(pm.currentProfileJSON); });
+        //var nProfiles = pm.profileArr.length;
+        //displayInfo("Successfully loaded " + nProfiles + " profile" + (nProfiles === 1 ? "." : "s."));
+        var profileList = pm.profileArr.map(function(prof){ return prof.name; }).join(", ");
+        displayInfo("Successfully loaded profiles: " + profileList);
+        onProfileSwitch(); // draw current profile data
+    } catch(err) { displayInfo(err); }
 
-        $("#copy_btn").click(function(){ copyTextToClipboard(stringifyOpaJSONData(currentProfile)); });
-        var profileFragment = profiles.length === 1 ? " profile is" : " profiles are";
-        var msg = profiles.length + profileFragment + ' loaded successfully. Currently selected: "' +
-            currentProfile.name + '"';
-        statusInfoSpan.text(msg);
-    } catch(err) {
-        console.error(err);
-        statusInfoSpan.text("error!" + err.message);
-    }
+    var productivityApp = {
+        paper: paper,
+        displayInfo: displayInfo,
+        profileManager: pm,
+        copyTextToClipboard: copyTextToClipboard
+    };
+    global.productivityApp = productivityApp;
+    return productivityApp;
 
-    function getDataFromLocalStorage() {
-        var ls = global.localStorage;
-        if (!ls) throw new Error("local storage is not supported in this browser");
-        var prefix = "opa_profile_";
-        var result = [];
-        for (var key in localStorage) {
-            if (!localStorage.hasOwnProperty(key) || key.slice(0, prefix.length) !== prefix)
-                continue;
-            var raw = localStorage[key];
-            try {
-                var data = parseOpaJSONData(raw);
-                result.push(data);
-            } catch(err) {
-                console.error("Skipping bad data. " + err.message + "\n" + key + " : " + raw);
-            }
+    function displayInfo(info, consoleOnly) {
+        if (info instanceof Error) {
+            console.error(info);
+            if (consoleOnly) return;
+            statusInfoSpan.addClass("error");
+            statusInfoSpan.text("error! " + info.message);
+        } else {
+            console.log(info);
+            if (consoleOnly) return;
+            statusInfoSpan.removeClass("error");
+            statusInfoSpan.text(info);
         }
-        if (!result.length) {
-            console.log("no data is recorded in the local storage yet, creating example profile");
-            data = example_profile;
-            localStorage[prefix + data.name] = stringifyOpaJSONData(data);
-            result.push(data);
+    }
+
+    function onProfileSwitch() {
+        paper.clear();
+        try {
+            drawBarGraph(paper, pm.currentProfile, settings);
+            displayInfo("Successfully drew bar graph of profile " + pm.currentProfile.name, true);
         }
-        return result;
-    }
-
-    function parseOpaJSONData(rawJSONString) {
-        var data = JSON.parse(rawJSONString);
-        var res = {};
-        if (!data || typeof data !== "object")
-            throw new SyntaxError("data must be an object with key-value pairs");
-        if (typeof data.name !== "string" || !data.name.trim())
-            throw new SyntaxError('"name" must be a non-whitespace string');
-        if (typeof data.firstDay !== "string" || isNaN(+new Date(data.firstDay)))
-            throw new SyntaxError('"firstDay" must be a valid date string');
-        if (data.dataArr !== undefined && !Array.isArray(data.dataArr))
-            throw new SyntaxError('"dataArr" must be an array, containing positive integers or null-values');
-        if (data.daySeparationTime !== undefined) {
-            if (typeof data.daySeparationTime !== "string")
-                throw new SyntaxError('"daySeparationTime" must be a timestring of form "hh:mm"');
-            res.daySeparationTime = data.daySeparationTime = data.daySeparationTime.trim();
-            var match = data.daySeparationTime.match(/^(\d\d?):(\d\d)$/);
-            if (!match || +match[1] > 24 || +match[2] > 59)
-                throw new SyntaxError('"daySeparationTime" must be a timestring of form "hh:mm"');
-            res.daySeparationMs = (+match[1] * 60 + +match[2]) * 60 * 1000;
-        } else res.daySeparationMs = 0;
-        res.name = data.name.trim();
-        res.firstDay = data.firstDay.trim();
-        res.dataArr = (data.dataArr || []).map(function(x) {
-            if (typeof x === "string" && x.trim()) x = +x;
-            if (typeof x !== "number" || !isFinite(x) || isNaN(x)) return null;
-            return x; // float, negative and to big values will silently pass
-        });
-        return res;
-    }
-
-    function stringifyOpaJSONData(data) {
-        var res = {
-            name: data.name,
-            firstDay: data.firstDay,
-            dataArr: data.dataArr
-        };
-        if (data.daySeparationTime) res.daySeparationTime = data.daySeparationTime;
-        return JSON.stringify(res);
+        catch(err) { displayInfo(err); }
     }
 
     function drawBarGraph(paper, data, settings) {
         var s = expandSettings(settings); // omitted settings will result in default settings object
         stretchPaper(paper, s.weekWidth + s.sidesGap * 2, 1600);
         var currentDate = new Date();
-        var firstDate = new Date(data.firstDay);
-        var lastDate = incDate(new Date(data.firstDay), data.dataArr.length); // get date of the last recorded day
+        var firstDate = new Date(data.firstDate);
+        var lastDate = incDate(new Date(data.firstDate), data.dataArr.length); // get date of the last recorded day
         if (currentDate > lastDate) lastDate = currentDate; // if current day is bigger than last recorded day
 
         var dayOfWeek = (firstDate.getDay() + 6) % 7; // 0=mon ... 5=sat 6=sun
@@ -138,13 +91,13 @@
             }
             if (d.getDate() === 1 && i) {
                 monthNumber++;
-                if (s.monthsColumnSize > 1 && monthNumber % s.monthsColumnSize === 0) {
+                if (s.monthsColumn > 1 && monthNumber % s.monthsColumn === 0) {
                     // next month column
                     drawGrid(weekNumber);
                     weekNumber = 0;
                     yShift = s.baseline;
                     xShift += s.sidesGap + s.weekWidth;
-                } else if (s.verticalMonthGap) {
+                } else if (s.monthGap) {
                     drawGrid(weekNumber);
                     weekNumber++;
                     yShift += s.weekHeight;
@@ -157,7 +110,7 @@
             var x0 = s.sidesGap / 2;
             var y0 = (s.baseline + weekNum * s.weekHeight);
             var l = s.weekWidth + s.sidesGap;
-            for (var i = 0; i < s.avMaxPomAmount; i++) {
+            for (var i = 0; i < s.maxPom; i++) {
                 var opacity = i % 5 ? 0.1 : i % 10 ? 0.25 : 0.5;
                 var y = y0 + s.pomHeight * s.direction * i;
                 paper.path("M" + x0 + "," + y + " l " + l + ",0")
@@ -173,14 +126,14 @@
                 "#004088,#0020CC,#0000FF,#0064FF,#0094FF,#00CCFF,#00FFFF,#9FFFFF").split(",");
             s.pomHeight = settings.pomHeight || 5;
             s.pomWidth = settings.pomWidth || 5;
-            s.avMaxPomAmount = settings.avMaxPomAmount || 25; // todo: add truncation
+            s.maxPom = settings.maxPom || 25; // todo: add truncation
             s.direction = settings.direction || -1; // -1: from bottom to top, 1: from top to bottom
-            s.verticalMonthGap = !!settings.verticalMonthGap; // vertical gap between months
-            s.monthsColumnSize = settings.monthsColumnSize || -1; // 1: horizontal layout, n: months columns are of size n, -1: vertical layout // todo
+            s.monthGap = !!settings.monthGap; // vertical gap between months
+            // todo:
+            s.monthsColumn = settings.monthsColumn || -1; // 1: horizontal, n: months columns of size n, -1: vertical
             s.sidesGap = settings.sidesGap || s.pomWidth; // gaps to all 4 directions from the graph
-
             s.weekWidth = s.pomWidth * 7;
-            s.weekHeight = s.pomHeight * s.avMaxPomAmount;
+            s.weekHeight = s.pomHeight * s.maxPom;
             s.baseline = s.sidesGap + (s.direction == -1 ? s.weekHeight : 0);
 
             return s;
@@ -211,11 +164,4 @@
                               "can't copy! check if function call is initiated by a user action");
     }
 
-    var productivityApp = {
-        paper: paper,
-        copyTextToClipboard: copyTextToClipboard
-    };
-    global.productivityApp = productivityApp;
-    return productivityApp;
-
-})(window);
+})(window, window.jQuery);
