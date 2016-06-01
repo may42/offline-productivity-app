@@ -3,21 +3,28 @@
 <head lang="en">
     <meta charset="UTF-8">
     <title>pom-calendar</title>
+    <style>
+        body, select, button { font: 14px "Segoe UI", "Arial", sans-serif; }
+        #info { white-space: nowrap }
+        span.error { color: red; background-color: pink; }
+    </style>
 </head>
 <body>
-<div id="info" style="white-space: nowrap">
-<span id="local_storage_info">Data is saved in the local storage.</span><br/>
+<div id="info">
+<span id="status_info">"Loading script..."</span><br/>
 [TODO] Arrows - change selected day<br/>
-[TODO] Alt+"+"/"-" - increase/decrease value of the selected day<br/>
-[TODO] Alt+DIGIT - set value of the selected day to a digit<br/>
-[TODO] Alt+N - new profile (string name or JSON data)<br/>
-[TODO] Alt+R - rename current profile<br/>
-[TODO] Alt+D - edit raw data of the current profile</div>
-<label>[TODO] Profile:<select id="profile_select" name="profile_select"></select></label>
+[TODO] Alt+"-"/"+" - decrease/increase value of the selected day<br/>
+[TODO] Alt+DIGIT - set value of the selected day to a value<br/>
+[TODO] Alt+N - new profile<br/>
+[TODO] Alt+R - rename profile<br/>
+[TODO] Alt+E - edit profile raw data<br/>
+[TODO] Alt+Del - delete profile</div>
+<label>Profile: <select id="profile_select" name="profile_select"></select></label>
 <button id="copy_btn">Copy all data to the clipboard (JSON)</button>
 <div id="pom"></div>
 <script src="scripts/vendor/raphael-min.js"></script>
 <script src="scripts/vendor/jquery-1.12.4.min.js"></script>
+<script src="scripts/profile_manager.js"></script>
 <script src="scripts/app.js"></script>
 </body>
 </html>
