@@ -8,11 +8,9 @@
         var pm = new global.ProfileManager($("#profile_select"));
         pm.profileSwitchCallback = onProfileSwitch;
         $("#copy_btn").click(function() { copyTextToClipboard(pm.currentProfileJSON); });
-        //var nProfiles = pm.profileArr.length;
-        //displayInfo("Successfully loaded " + nProfiles + " profile" + (nProfiles === 1 ? "." : "s."));
         var profileList = pm.profileArr.map(function(prof){ return prof.name; }).join(", ");
-        displayInfo("Successfully loaded profiles: " + profileList);
         onProfileSwitch(); // draw current profile data
+        displayInfo("Successfully loaded profiles: " + profileList);
     } catch(err) { displayInfo(err); }
 
     var productivityApp = {
@@ -38,11 +36,15 @@
         }
     }
 
-    function onProfileSwitch() {
+    function onProfileSwitch(err) {
+        if (err) {
+            displayInfo(err);
+            return;
+        }
         paper.clear();
         try {
             drawBarGraph(paper, pm.currentProfile, settings);
-            displayInfo("Successfully drew bar graph of profile " + pm.currentProfile.name, true);
+            displayInfo("Bar graph has been drawn successfully. Profile: " + pm.currentProfile.name);
         }
         catch(err) { displayInfo(err); }
     }
@@ -65,24 +67,17 @@
         for (var d = new Date(firstDate), i = 0; d < lastDate; incDate(d), i++) {
 
             var prodValue = data.dataArr[i];
-            //var dayOfWeek = (d.getDay() + 6) % 7; // 0=mon ... 5=sat 6=sun
-            //var weekNumber = (d.getDate() - dayOfWeek + 5) / 7 ^ 0; // week row in the month. don't ask me how
-            //weekNumber += monthXShift;
-
             if (typeof prodValue === "number") {
                 if (prodValue < 0 || prodValue >= s.colors.length)
                     throw new Error("can't get color, illegal prod value: " + prodValue);
                 var color = s.colors[prodValue];
-                //var x = s.sidesGap + dayOfWeek * s.pomWidth;
-                var x = xShift + dayOfWeek * s.pomWidth;
-                //var y = s.baseline + weekNumber * s.weekHeight;
-                var y = yShift;
-                var w = s.pomWidth;
-                var h = s.pomHeight * prodValue || 1;
+                var x = xShift + dayOfWeek * s.pomWidth,
+                    y = yShift,
+                    w = s.pomWidth,
+                    h = s.pomHeight * prodValue || 1;
                 if (s.direction == -1) y -= h;
                 paper.rect(x, y, w, h).attr({stroke: "none", fill: color});
             }
-            //dayOfWeek = (dayOfWeek + 1) % 7;
             dayOfWeek = (dayOfWeek + 1) % 7;
             if (dayOfWeek === 0 && i) {
                 drawGrid(weekNumber);
@@ -135,7 +130,6 @@
             s.weekWidth = s.pomWidth * 7;
             s.weekHeight = s.pomHeight * s.maxPom;
             s.baseline = s.sidesGap + (s.direction == -1 ? s.weekHeight : 0);
-
             return s;
         }
     }

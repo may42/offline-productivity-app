@@ -10,6 +10,7 @@
     };
 
     var ProfileManager = function(profileSelect) {
+        var self = this;
         if (!ls) throw new Error("local storage is not supported in this browser");
         if (!(profileSelect instanceof $) || profileSelect.length !== 1 || !profileSelect.is("select"))
             throw new SyntaxError('profileSelect must be a jQuery object pointed on a single "select" html element');
@@ -19,12 +20,26 @@
             writeData(example_profile);
             profileArr.push(example_profile);
         }
-        // todo: fill profileSelect with loaded profile names
+        for (var i = 0; i < profileArr.length; i++) {
+            var profileName = profileArr[i].name;
+            profileSelect.append($("<option>").val(profileName).text(profileName));
+        }
+        profileSelect.change(function() {
+            var selectedName = profileSelect.val();
+            for (var i = 0; i < profileArr.length; i++)
+                if (profileArr[i].name === selectedName) {
+                    self.currentProfile = profileArr[i];
+                    self.profileSwitchCallback();
+                    return;
+                }
+            // if non of the known profiles has name selectedName - error is passed into the profileSwitchCallback:
+            self.profileSwitchCallback(new ReferenceError('unknown profile name "' + selectedName + '"'));
+        });
         // todo: save currently selected profile name in the local storage and load it as a currentProfile
-        this.profileArr = profileArr;
-        this.currentProfile = profileArr[0];
-        this.currentProfileJSON = stringifyData(this.currentProfile);
-        this.profileSwitchCallback = function(){}; // function that will be called when profile is switched
+        self.profileArr = profileArr;
+        self.currentProfile = profileArr[0];
+        self.currentProfileJSON = stringifyData(self.currentProfile);
+        self.profileSwitchCallback = function(err){}; // function that will be called when profile is switched
     };
 
     // helper functions:
@@ -110,7 +125,9 @@
     }
 
     function stringifyData(data) {
+        // todo: this check is not needed is we will assume that data couldn't be broken INSIDE THE APP:
         var checked = checkAndNormalizeData(data);
+        // thees attributes are for internal purposes, so they are not passed into JSON.stringify()
         delete checked.daySeparationMs;
         delete checked.firstDateObj;
         return JSON.stringify(checked);
