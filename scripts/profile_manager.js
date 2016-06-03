@@ -38,7 +38,6 @@
         // todo: save currently selected profile name in the local storage and load it as a currentProfile
         self.profileArr = profileArr;
         self.currentProfile = profileArr[0];
-        self.currentProfileJSON = stringifyData(self.currentProfile);
         self.profileSwitchCallback = function(err){}; // function that will be called when profile is switched
     };
 
@@ -90,13 +89,6 @@
         if (typeof expectedName === "string" && res.name !== expectedName)
             throw new SyntaxError('expected data.name to be "' + expectedName + '", instead got "' + res.name + '"');
 
-        // firstDateObj is a Date object for internal purposes, and is not parsed by stringifyData function
-        var d = new Date(data.firstDate);
-        if (typeof data.firstDate !== "string" || isNaN(+d))
-            throw new SyntaxError("data.firstDate must be a valid date string");
-        res.firstDate = [d.getFullYear(), d.getMonth() + 1, d.getDate()].join(".");
-        res.firstDateObj = d;
-
         // daySeparationMs is a millisecond integer for internal purposes, and is not parsed by stringifyData function
         var daySeparationRequirements = 'data.daySeparationTime must be a timestring of form "hh:mm"';
         if (data.daySeparationTime === undefined) res.daySeparationMs = 0;
@@ -109,12 +101,21 @@
 
         var dataArrRequirements = "data.dataArr must be an array, containing positive integers or null-values";
         if (!Array.isArray(data.dataArr)) throw new SyntaxError(dataArrRequirements);
-        res.dataArr = data.dataArr.map(function(x) {
-            if (x == null) return null;
+        var seg = giveTrimmedArraySegment(data.dataArr);
+        res.dataArr = data.dataArr.slice(seg[0], seg[1]).map(function(x) {
+            if (x == null) return null; // null or undefined
             if (typeof x === "string" && x.trim()) x = +x;
             if (typeof x !== "number" || !isFinite(x) || isNaN(x)) throw new SyntaxError(dataArrRequirements);
             return x; // float, negative and to big values will silently pass
         });
+
+        // firstDateObj is a Date object for internal purposes, and is not parsed by stringifyData function
+        var d = new Date(data.firstDate);
+        incDate(d, seg[0]); // first seg[0] elements are skipped, so actual first date is later
+        if (typeof data.firstDate !== "string" || isNaN(+d))
+            throw new SyntaxError("data.firstDate must be a valid date string");
+        res.firstDate = [d.getFullYear(), d.getMonth() + 1, d.getDate()].join(".");
+        res.firstDateObj = d;
 
         return res;
     }
@@ -125,12 +126,33 @@
     }
 
     function stringifyData(data) {
-        // todo: this check is not needed is we will assume that data couldn't be broken INSIDE THE APP:
-        var checked = checkAndNormalizeData(data);
-        // thees attributes are for internal purposes, so they are not passed into JSON.stringify()
-        delete checked.daySeparationMs;
-        delete checked.firstDateObj;
-        return JSON.stringify(checked);
+        // checkAndNormalizeData is not needed if we'll assume that data couldn't be broken INSIDE THE APP
+        var filtered = {
+            name: data.name,
+            firstDate: data.firstDate,
+            daySeparationTime: data.daySeparationTime,
+            dataArr: data.dataArr
+        };
+        return JSON.stringify(filtered);
+    }
+
+    function incDate(d, n) {
+        if (n === undefined) n = 1;
+        d.setDate(d.getDate() + n);
+        return d;
+    }
+
+    function giveTrimmedArraySegment(arr) {
+        // returns starting end ending indices of array fragment, without leading and trailing null/undefined elements
+        // for example: [null,1,null,2,undefined,null] -> [1,4]
+        var elem, i = -1, j = arr.length;
+        do elem = arr[++i];
+        while (elem == null && i < j); // null or undefined
+        if (i === j) return [0, 0]; // the only case when segment[0] === segment[1]
+        do elem = arr[--j];
+        while (elem == null && j > -1);
+        if (j < 0 || j < i) throw new Error("contradiction");
+        return [i, j + 1];
     }
 
 })(window, window.jQuery, window.localStorage);

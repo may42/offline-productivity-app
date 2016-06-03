@@ -7,7 +7,7 @@
         var settings = { pomHeight: 5, pomWidth: 30, maxPom: 20 };
         var pm = new global.ProfileManager($("#profile_select"));
         pm.profileSwitchCallback = onProfileSwitch;
-        $("#copy_btn").click(function() { copyTextToClipboard(pm.currentProfileJSON); });
+        $("#copy_btn").click(function() { copyTextToClipboard(ProfileManager.stringifyData(pm.currentProfile)); });
         var profileList = pm.profileArr.map(function(prof){ return prof.name; }).join(", ");
         onProfileSwitch(); // draw current profile data
         displayInfo("Successfully loaded profiles: " + profileList);
@@ -52,63 +52,68 @@
     function drawBarGraph(paper, data, settings) {
         var s = expandSettings(settings); // omitted settings will result in default settings object
         stretchPaper(paper, s.weekWidth + s.sidesGap * 2, 1600);
-        var currentDate = new Date();
-        var firstDate = new Date(data.firstDate);
-        var lastDate = incDate(new Date(data.firstDate), data.dataArr.length); // get date of the last recorded day
-        if (currentDate > lastDate) lastDate = currentDate; // if current day is bigger than last recorded day
 
-        var dayOfWeek = (firstDate.getDay() + 6) % 7; // 0=mon ... 5=sat 6=sun
-        //var weekNumber = (firstDate.getDate() - dayOfWeek + 5) / 7 ^ 0; // week row in the calendar. don't ask me how
-        var weekNumber = 0;
-        var monthNumber = 0;
-        var xShift = s.sidesGap;
-        var yShift = s.baseline; // + weekNumber * s.weekHeight;
+        var curDate = new Date(),
+            firDate = data.firstDateObj,
+            year = firDate.getFullYear(),
+            monthLengths = giveMothLengths(year++),
+            month = firDate.getMonth(),
+            daysLeft = monthLengths[month++] - firDate.getDate(),
+            dayOfWeek = (firDate.getDay() + 6) % 7, // 0=mon ... 5=sat 6=sun
+            amountOfDays = data.dataArr.length;
+        if (curDate > firDate)
+            amountOfDays = Math.max(amountOfDays, (curDate - firDate) / (1000 * 60 * 60 * 24) ^ 0);
 
-        for (var d = new Date(firstDate), i = 0; d < lastDate; incDate(d), i++) {
+        var xShift = s.sidesGap,
+            yShift = s.baseline;
 
-            var prodValue = data.dataArr[i];
-            if (typeof prodValue === "number") {
-                if (prodValue < 0 || prodValue >= s.colors.length)
-                    throw new Error("can't get color, illegal prod value: " + prodValue);
-                var color = s.colors[prodValue];
-                var x = xShift + dayOfWeek * s.pomWidth,
+        for (var i = 0; i < amountOfDays; i++) {
+
+            var val = data.dataArr[i];
+            if (typeof val === "number" && isFinite(val)) {
+                val = val ^ 0;
+                if (val < 0 || val >= s.colors.length)
+                    throw new Error("can't get color, illegal prod value: " + val);
+                var color = s.colors[val],
+                    x = xShift + dayOfWeek * s.pomWidth,
                     y = yShift,
                     w = s.pomWidth,
-                    h = s.pomHeight * prodValue || 1;
+                    h = s.pomHeight * Math.min(val, s.maxPom) || 1;
                 if (s.direction == -1) y -= h;
                 paper.rect(x, y, w, h).attr({stroke: "none", fill: color});
             }
             dayOfWeek = (dayOfWeek + 1) % 7;
             if (dayOfWeek === 0 && i) {
-                drawGrid(weekNumber);
-                weekNumber++;
+                drawGrid();
                 yShift += s.weekHeight;
             }
-            if (d.getDate() === 1 && i) {
-                monthNumber++;
-                if (s.monthsColumn > 1 && monthNumber % s.monthsColumn === 0) {
-                    // next month column
-                    drawGrid(weekNumber);
-                    weekNumber = 0;
-                    yShift = s.baseline;
-                    xShift += s.sidesGap + s.weekWidth;
-                } else if (s.monthGap) {
-                    drawGrid(weekNumber);
-                    weekNumber++;
+            if (daysLeft === 0) {
+                if (month === 12) {
+                    month = 0;
+                    monthLengths = giveMothLengths(year++);
+                }
+                daysLeft = monthLengths[month++];
+                // todo: month columns
+                if (s.monthGap) {
+                    drawGrid();
                     yShift += s.weekHeight;
                 }
             }
+            daysLeft--;
+
         }
-        function drawGrid(weekNum) {
+        if (dayOfWeek) drawGrid();
+
+        function drawGrid() {
             var strokeWidth = 1;
             var strokeColor = "#000";
-            var x0 = s.sidesGap / 2;
-            var y0 = (s.baseline + weekNum * s.weekHeight);
+            var x = xShift - s.sidesGap / 2;
+            var y = yShift;
             var l = s.weekWidth + s.sidesGap;
-            for (var i = 0; i < s.maxPom; i++) {
+            var h = s.pomHeight * s.direction;
+            for (var i = 0; i < s.maxPom; i++, y+=h) {
                 var opacity = i % 5 ? 0.1 : i % 10 ? 0.25 : 0.5;
-                var y = y0 + s.pomHeight * s.direction * i;
-                paper.path("M" + x0 + "," + y + " l " + l + ",0")
+                paper.path("M" + x + "," + y + " l" + l + ",0")
                     .attr({stroke: strokeColor, "stroke-width": strokeWidth, "stroke-opacity": opacity});
             }
         }
@@ -121,7 +126,7 @@
                 "#004088,#0020CC,#0000FF,#0064FF,#0094FF,#00CCFF,#00FFFF,#9FFFFF").split(",");
             s.pomHeight = settings.pomHeight || 5;
             s.pomWidth = settings.pomWidth || 5;
-            s.maxPom = settings.maxPom || 25; // todo: add truncation
+            s.maxPom = settings.maxPom || 25;
             s.direction = settings.direction || -1; // -1: from bottom to top, 1: from top to bottom
             s.monthGap = !!settings.monthGap; // vertical gap between months
             // todo:
@@ -132,11 +137,6 @@
             s.baseline = s.sidesGap + (s.direction == -1 ? s.weekHeight : 0);
             return s;
         }
-    }
-
-    function incDate(d, n) {
-        d.setDate(d.getDate() + (n || 1));
-        return d;
     }
 
     function stretchPaper(paper, w, h) {
@@ -156,6 +156,13 @@
         t.remove();
         console.log(success ? "copied to clipboard: " + text :
                               "can't copy! check if function call is initiated by a user action");
+    }
+
+    function giveMothLengths(year) {
+        // nDays = month === 1 ? 28 + leap : 31 - month % 7 & 1;
+        var months = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        if (!(year % 4) && year % 100 || !(year % 400)) months[1]++;
+        return months;
     }
 
 })(window, window.jQuery);
