@@ -3,20 +3,30 @@
 
     try {
         var statusInfoSpan = $("#status_info");
-        var paper = Raphael("pom", 100, 100);
+        var paper = Raphael("apo", 100, 100);
         var settings = { pomHeight: 5, pomWidth: 30, maxPom: 20 };
         var pm = new global.ProfileManager($("#profile_select"));
         pm.profileSwitchCallback = onProfileSwitch;
-        $("#copy_btn").click(function() { copyTextToClipboard(ProfileManager.stringifyData(pm.currentProfile)); });
+        $("#copy_btn").click(function() {
+            copyTextToClipboard(ProfileManager.stringifyData(pm.currentProfile));
+        });
+        $("body").keydown(function(ev) {
+            if (ev.keyCode === 37) moveSelection(-1);
+            if (ev.keyCode === 39) moveSelection(1);
+        });
         var profileList = pm.profileArr.map(function(prof){ return prof.name; }).join(", ");
+        var selectedDay; // used for storing link to currently selected day raphael object
+        var selection; // used for storing selection rectangle
         onProfileSwitch(); // draw current profile data
         displayInfo("Successfully loaded profiles: " + profileList);
     } catch(err) { displayInfo(err); }
 
     var productivityApp = {
         paper: paper,
-        displayInfo: displayInfo,
         profileManager: pm,
+        displayInfo: displayInfo,
+        selectDay: selectDay,
+        moveSelection: moveSelection,
         copyTextToClipboard: copyTextToClipboard
     };
     global.productivityApp = productivityApp;
@@ -60,28 +70,38 @@
             month = firDate.getMonth(),
             daysLeft = monthLengths[month++] - firDate.getDate(),
             dayOfWeek = (firDate.getDay() + 6) % 7, // 0=mon ... 5=sat 6=sun
-            amountOfDays = data.dataArr.length;
-        if (curDate > firDate)
-            amountOfDays = Math.max(amountOfDays, (curDate - firDate) / (1000 * 60 * 60 * 24) ^ 0);
+            amountOfDays = data.dataArr.length || 1,
+            currentDayInd = (curDate - firDate) / (1000 * 60 * 60 * 24) ^ 0,
+            dayToBeSelected; // variable to store raphael object, that will be selected after the loop
+        if (curDate > firDate && currentDayInd >= amountOfDays)
+            amountOfDays = currentDayInd + 1;
+        if (currentDayInd < 0) currentDayInd = 0;
 
         var xShift = s.sidesGap,
             yShift = s.baseline;
 
         for (var i = 0; i < amountOfDays; i++) {
 
+            var color = "transparent",
+                x = xShift + dayOfWeek * s.pomWidth,
+                y = yShift,
+                w = s.pomWidth,
+                h = s.pomHeight * s.maxPom;
+
             var val = data.dataArr[i];
             if (typeof val === "number" && isFinite(val)) {
                 val = val ^ 0;
                 if (val < 0 || val >= s.colors.length)
                     throw new Error("can't get color, illegal prod value: " + val);
-                var color = s.colors[val],
-                    x = xShift + dayOfWeek * s.pomWidth,
-                    y = yShift,
-                    w = s.pomWidth,
-                    h = s.pomHeight * Math.min(val, s.maxPom) || 1;
-                if (s.direction == -1) y -= h;
-                paper.rect(x, y, w, h).attr({stroke: "none", fill: color});
-            }
+                color = s.colors[val];
+                if (val < s.maxPom) h = s.pomHeight * val || 1;
+            } else val = null;
+            if (s.direction == -1) y -= h;
+            var rect = paper.rect(x, y, w, h)
+                 .attr({stroke: "none", fill: color})
+                 .data("value", val);
+            if (i === currentDayInd) dayToBeSelected = rect;
+
             dayOfWeek = (dayOfWeek + 1) % 7;
             if (dayOfWeek === 0 && i) {
                 drawGrid();
@@ -103,6 +123,7 @@
 
         }
         if (dayOfWeek) drawGrid();
+        selectDay(dayToBeSelected);
 
         function drawGrid() {
             var strokeWidth = 1;
@@ -163,6 +184,43 @@
         var months = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
         if (!(year % 4) && year % 100 || !(year % 400)) months[1]++;
         return months;
+    }
+
+    function selectDay(newDay) {
+        // newDay accepts SVG rect Elements, raphael rect objects, jquery rect objects
+        // todo: accept date string or Date object
+
+        var errorMsg = "newDay argument must be a rect element (SVGElement, $ or Raphael object)";
+
+        if (!newDay || typeof newDay !== "object") throw new SyntaxError(errorMsg);
+        if (newDay.constructor.prototype == Raphael.el) newDay = newDay.node;
+        if (newDay instanceof $) newDay = newDay.get(0);
+        if (!(newDay instanceof SVGElement) || newDay.nodeName !== "rect") throw new SyntaxError(errorMsg);
+        if (typeof newDay.raphaelid !== "number")
+            throw new SyntaxError("newDay rect element must be bound to some Raphael paper");
+
+        selectedDay = newDay;
+        if (selection) selection.remove();
+        selection = paper.getById(selectedDay.raphaelid).clone()
+                         .attr({stroke: "#e3d", fill: "rgba(240,50,220,.3)", "stroke-width": "3px"});
+    }
+
+    function moveSelection(x) {
+        // x accepts 1 and -1, for next and previous day respectively
+        // todo: accept any integer
+
+        var rectGroup;
+        var leadingIgnoredRectangles = 0;
+        var trailingIgnoredRectangles = 1; // 1 is for selection rect itself
+        if (x === -1) {
+            rectGroup = $(selectedDay).prevAll("rect");
+            if (rectGroup.length <= leadingIgnoredRectangles) return;
+        } else if (x === 1) {
+            rectGroup = $(selectedDay).nextAll("rect");
+            if (rectGroup.length <= trailingIgnoredRectangles) return;
+            // todo: generate new week, when trying to select next day of the last day
+        } else throw new SyntaxError("x argument must be equal to -1 or 1");
+        selectDay(rectGroup.get(0)); // selects next/prev day only if it exists
     }
 
 })(window, window.jQuery);
