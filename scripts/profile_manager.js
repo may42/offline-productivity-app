@@ -24,12 +24,13 @@
             var profileName = profileArr[i].name;
             profileSelect.append($("<option>").val(profileName).text(profileName));
         }
-        profileSelect.change(function() {
+        profileSelect.change(function(ev) {
+            $(ev.target).blur();
             var selectedName = profileSelect.val();
             for (var i = 0; i < profileArr.length; i++)
                 if (profileArr[i].name === selectedName) {
                     self.currentProfile = profileArr[i];
-                    self.profileSwitchCallback();
+                    self.profileSwitchCallback(); // call action, that is externally bound to the profile manager
                     return;
                 }
             // if non of the known profiles has name selectedName - error is passed into the profileSwitchCallback:
@@ -41,11 +42,11 @@
         self.profileSwitchCallback = function(err){}; // function that will be called when profile is switched
     };
 
+    global.incDate = incDate; // util function
     // helper functions:
-    //ProfileManager.loadData = loadData;
-    //ProfileManager.writeData = writeData;
     ProfileManager.parseData = parseData;
     ProfileManager.stringifyData = stringifyData;
+    ProfileManager.checkAndNormalizeData = checkAndNormalizeData;
     global.ProfileManager = ProfileManager;
     return ProfileManager;
 
@@ -100,20 +101,29 @@
         } else throw new SyntaxError(daySeparationRequirements);
 
         var dataArrRequirements = "data.dataArr must be an array, containing positive integers or null-values";
-        if (!Array.isArray(data.dataArr)) throw new SyntaxError(dataArrRequirements);
-        var seg = giveTrimmedArraySegment(data.dataArr);
-        res.dataArr = data.dataArr.slice(seg[0], seg[1]).map(function(x) {
-            if (x == null) return null; // null or undefined
-            if (typeof x === "string" && x.trim()) x = +x;
-            if (typeof x !== "number" || !isFinite(x) || isNaN(x)) throw new SyntaxError(dataArrRequirements);
-            return x; // float, negative and to big values will silently pass
-        });
+        var seg = [0, 0]; // used to remove leading and trailing null/undefined elements from the array
+        if (data.dataArr !== undefined) {
+            if (!Array.isArray(data.dataArr)) throw new SyntaxError(dataArrRequirements);
+            seg = giveTrimmedArraySegment(data.dataArr);
+            res.dataArr = data.dataArr.slice(seg[0], seg[1]).map(function(x) {
+                if (x == null) return null; // null or undefined
+                if (typeof x === "string" && x.trim()) x = +x;
+                if (typeof x !== "number" || !isFinite(x) || isNaN(x)) throw new SyntaxError(dataArrRequirements);
+                return x; // float, negative and to big values will silently pass
+            });
+        } else res.dataArr = [];
 
-        // firstDateObj is a Date object for internal purposes, and is not parsed by stringifyData function
-        var d = new Date(data.firstDate);
-        incDate(d, seg[0]); // first seg[0] elements are skipped, so actual first date is later
-        if (typeof data.firstDate !== "string" || isNaN(+d))
-            throw new SyntaxError("data.firstDate must be a valid date string");
+        // res.firstDateObj is a Date object for internal purposes, and is not parsed by stringifyData function
+        if (data.firstDate !== undefined) {
+            var dateComp = data.firstDate.split(".");
+            var d = new Date(dateComp[0], dateComp[1] - 1, dateComp[2]);
+            incDate(d, seg[0]); // first seg[0] elements are skipped, so actual first date is later
+            if (typeof data.firstDate !== "string" || isNaN(+d))
+                throw new SyntaxError("data.firstDate must be a valid date string");
+        } else {
+            d = new Date();
+            if (res.dataArr.length) incDate(d, 1 - res.dataArr.length);
+        }
         res.firstDate = [d.getFullYear(), d.getMonth() + 1, d.getDate()].join(".");
         res.firstDateObj = d;
 
