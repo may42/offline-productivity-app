@@ -63,9 +63,18 @@
 
     function onKeyDown(ev) {
         try {
-            if (ev.keyCode >= 37 && ev.keyCode <= 40) ev.preventDefault();
-            if (ev.keyCode === 37) moveSelection(-1);
-            if (ev.keyCode === 39) moveSelection(1);
+            if (ev.keyCode >= 37 && ev.keyCode <= 40) ev.preventDefault(); // any arrow
+            if (ev.keyCode === 37) moveSelection(-1); // left arrow
+            if (ev.keyCode === 39) moveSelection(1); // right arrow
+            if (ev.keyCode === 38) incSelectedDayValue(1); // up arrow
+            if (ev.keyCode === 40) incSelectedDayValue(-1); // down arrow
+            if (ev.altKey) {
+                if (ev.keyCode === 46) setSelectedDayValue(null); // Alt Del
+                if (ev.keyCode >= 48 && ev.keyCode <= 57)
+                    setSelectedDayValue(ev.keyCode - 48); // Alt DIGIT
+                //if (ev.keyCode === 189) incSelectedDayValue(-1); // Alt -
+                //if (ev.keyCode === 187) incSelectedDayValue(1); // Alt +
+            }
         } catch(err) { displayInfo(err); }
     }
 
@@ -111,10 +120,10 @@
                 else throw new Error("can't get color, illegal prod value: " + val);
                 if (val < s.maxPom) h = s.pomHeight * val || 1;
             } else val = null;
-            if (s.direction == -1) y -= h;
+            if (s.direction === -1) y -= h;
             var rect = paper.rect(x, y, w, h)
                             .attr({stroke: "none", fill: color})
-                            .data("value", val);
+                            .data("dayInd", i);
             if (i === currentDayInd)
                 var dayToBeSelected = rect; // raphael object, that will be selected after the loop
 
@@ -180,7 +189,7 @@
             // additional values:
             s.weekWidth = s.pomWidth * 7;
             s.weekHeight = s.pomHeight * s.maxPom;
-            s.baseline = s.sidesGap + (s.direction == -1 ? s.weekHeight : 0);
+            s.baseline = s.sidesGap + (s.direction === -1 ? s.weekHeight : 0);
             return s;
         }
     }
@@ -209,38 +218,38 @@
         return months;
     }
 
-    function selectDay(newDay) {
+    function selectDay(day) {
         // visually selects given rect element
-        // newDay accepts SVG rect Elements, raphael rect objects, jquery rect objects
+        // day argument accepts SVG rect Elements, raphael rect objects, jquery rect objects
         // todo: accept date string or Date object
 
-        var errorMsg = "newDay argument must be a rect element (SVGElement, $ or Raphael object)";
+        var errorMsg = "day argument must be a rect element (SVGElement, $ or Raphael object)";
 
-        if (!newDay || typeof newDay !== "object") throw new SyntaxError(errorMsg);
-        if (newDay.constructor.prototype == Raphael.el) newDay = newDay.node;
-        if (newDay instanceof $) newDay = newDay.get(0);
-        if (!(newDay instanceof SVGElement) || newDay.nodeName !== "rect") throw new SyntaxError(errorMsg);
-        if (typeof newDay.raphaelid !== "number")
-            throw new SyntaxError("newDay rect element must be bound to some Raphael paper");
+        if (!day || typeof day !== "object") throw new SyntaxError(errorMsg);
+        if (day.constructor.prototype == Raphael.el) day = day.node;
+        if (day instanceof $) day = day.get(0);
+        if (!(day instanceof SVGElement) || day.nodeName !== "rect") throw new SyntaxError(errorMsg);
+        if (typeof day.raphaelid !== "number")
+            throw new SyntaxError("day rect element must be bound to some Raphael paper");
 
-        selectedDay = newDay;
+        selectedDay = day;
         if (selection) selection.remove();
         // selection object is a rect element clone, that is automatically moved to the top by Raphael
         selection = paper.getById(selectedDay.raphaelid).clone()
                          .attr({stroke: "#e3d", fill: "rgba(240,50,220,.3)", "stroke-width": "3px"});
     }
 
-    function moveSelection(x) {
-        // x accepts 1 and -1, for next and previous day respectively
+    function moveSelection(dist) {
+        // dist accepts 1 and -1, for next and previous day respectively
         // todo: accept any integer
 
         var rectGroup;
         var leadingRectangles = 0;
         var trailingRectangles = 1; // 1 is for selection rect itself
-        if (x === -1) {
+        if (dist === -1) {
             rectGroup = $(selectedDay).prevAll("rect");
             if (rectGroup.length <= leadingRectangles) return;
-        } else if (x === 1) {
+        } else if (dist === 1) {
             rectGroup = $(selectedDay).nextAll("rect");
             if (rectGroup.length <= trailingRectangles) {
                 pm.currentProfile.dataArr.length += 7; // generate new week
@@ -250,6 +259,59 @@
             }
         } else throw new SyntaxError("x argument must be equal to -1 or 1");
         selectDay(rectGroup.get(0)); // selects next/prev day only if it exists
+    }
+
+    function setSelectedDayValue(val) {
+        if (val != null && (typeof val !== "number" || !isFinite(val)))
+            throw new TypeError("val must be an integer, undefined or null");
+        var raphaelObj = paper.getById(selectedDay.raphaelid);
+        if (!raphaelObj)
+            throw new ReferenceError("selectedDay element must be bound to some Raphael paper");
+        var s = currentGraphSettings;
+        var dataArr = pm.currentProfile.dataArr;
+        var dayInd = raphaelObj.data("dayInd");
+        if (!(dayInd in dataArr))
+            throw new Error("can't find such dayInd in current profile dataArr: " + dayInd);
+
+        var oldHeight = raphaelObj.attr("height"),
+            oldYPos = raphaelObj.attr("y");
+        if (s.direction === -1) oldYPos += oldHeight; // restore old y origin point
+
+        var color = "transparent", // rgba(0,0,0,0)
+            y = oldYPos,
+            h = s.pomHeight * s.maxPom;
+
+        if (val < 0) val = null;
+        if (val != null) {
+            val = val ^ 0;
+            var maxVal = s.colors.length - 1;
+            if (val > maxVal) {
+                displayInfo("can't exceed value " + maxVal + " with current settings");
+                val = maxVal;
+            }
+            color = s.colors[val];
+            if (val < s.maxPom) h = s.pomHeight * val || 1;
+        }
+        if (s.direction === -1) y -= h;
+
+        if (color !== "transparent") // reset the transparent element
+            $(raphaelObj.node).removeAttr("fill-opacity");
+        raphaelObj.attr({y: y, height: h, fill: color});
+
+        dataArr[dayInd] = val;
+        selectDay(raphaelObj);
+        pm.saveCurrentProfile();
+    }
+
+    function incSelectedDayValue(n) {
+        if (n === 0) return;
+        if (typeof n !== "number" || !isFinite(n))
+            throw new TypeError("n must be an integer");
+        var raphaelObj = paper.getById(selectedDay.raphaelid);
+        if (!raphaelObj)
+            throw new ReferenceError("selectedDay element must be bound to some Raphael paper");
+        var oldValue = pm.currentProfile.dataArr[raphaelObj.data("dayInd")];
+        setSelectedDayValue(+oldValue + n);
     }
 
 })(window, window.jQuery);

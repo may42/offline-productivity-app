@@ -40,6 +40,9 @@
         self.profileArr = profileArr;
         self.currentProfile = profileArr[0];
         self.profileSwitchCallback = function(err){}; // function that will be called when profile is switched
+        self.saveCurrentProfile = function() {
+            writeData(self.currentProfile);
+        }
     };
 
     global.incDate = incDate; // util function
@@ -137,11 +140,12 @@
 
     function stringifyData(data) {
         // checkAndNormalizeData is not needed if we'll assume that data couldn't be broken INSIDE THE APP
+        var seg = giveTrimmedArraySegment(data.dataArr);
         var filtered = {
             name: data.name,
             firstDate: data.firstDate,
             daySeparationTime: data.daySeparationTime,
-            dataArr: data.dataArr
+            dataArr: data.dataArr.slice(seg[0], seg[1])
         };
         return JSON.stringify(filtered);
     }
